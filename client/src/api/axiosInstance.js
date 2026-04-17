@@ -1,41 +1,24 @@
-import axios from "axios";
-import { getToken, clearToken } from "../utils/tokenHelpers";
+import axios from 'axios';
 
 const api = axios.create({
-  // Use environment variable or fallback to localhost
-  baseURL: import.meta.env.VITE_API_URL || "http://localhost:5000/api",
-  headers: {
-    "Content-Type": "application/json",
-  },
+  baseURL: import.meta.env.VITE_API_URL || 'http://localhost:5000/api',
 });
 
-/**
- * Request Interceptor: Attach JWT token to every request if it exists.
- */
-api.interceptors.request.use(
-  (config) => {
-    const token = getToken();
-    if (token) {
-      config.headers.Authorization = `Bearer ${token}`;
-    }
-    return config;
-  },
-  (error) => {
-    return Promise.reject(error);
+// Attach token to every request automatically
+api.interceptors.request.use((config) => {
+  const token = localStorage.getItem('sm_token');
+  if (token) {
+    config.headers.Authorization = `Bearer ${token}`;
   }
-);
+  return config;
+});
 
-/**
- * Response Interceptor: Handle global errors like 401 Unauthorized.
- */
+// Response Interceptor: Handle global errors like 401 Unauthorized.
 api.interceptors.response.use(
   (response) => response,
   (error) => {
-    // If the server returns 401, the token is invalid or expired
     if (error.response?.status === 401) {
-      clearToken();
-      localStorage.removeItem("sm_user");
-      // Optional: Redirect to login if not already there
+      localStorage.removeItem("sm_token");
       if (window.location.pathname !== "/auth") {
         window.location.href = "/auth";
       }

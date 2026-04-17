@@ -1,10 +1,18 @@
 import { useState, useRef, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
 
 export default function ProfileDropdown() {
   const { user, logout } = useAuth();
+  const navigate = useNavigate();
   const [open, setOpen] = useState(false);
   const dropdownRef = useRef(null);
+
+  const handleLogout = () => {
+    logout();
+    setOpen(false);
+    navigate("/auth");
+  };
 
   useEffect(() => {
     const handleClickOutside = (event) => {
@@ -55,7 +63,7 @@ export default function ProfileDropdown() {
           </div>
 
           <button 
-            onClick={logout}
+            onClick={handleLogout}
             className="w-full px-4 py-3 text-left text-sm font-medium
                        text-fail
                        hover:bg-gray-50 dark:hover:bg-navy-light

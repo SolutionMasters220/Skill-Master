@@ -9,8 +9,13 @@ export default function RoadmapPage() {
   const { roadmapJson, progress } = useApp();
   const navigate = useNavigate();
 
-  const [activeModuleIdx, setActiveModuleIdx] = useState(0);
-  const [activeWeekIdx, setActiveWeekIdx] = useState(0);
+  const [activeModuleIdx, setActiveModuleIdx] = useState(
+    () => Math.max(0, (progress?.currentModule ?? 1) - 1)
+  );
+  const [activeWeekIdx, setActiveWeekIdx] = useState(
+    () => Math.max(0, (progress?.currentWeek ?? 1) - 1)
+  );
+
 
   // Edge Case: No roadmap generated
   if (!roadmapJson) {
@@ -32,7 +37,7 @@ export default function RoadmapPage() {
     );
   }
 
-  const activeModule = roadmapJson.modules[activeModuleIdx];
+  const activeModule = roadmapJson?.modules?.[activeModuleIdx];
   const activeWeek = activeModule?.weeks?.[activeWeekIdx];
 
   const getDayStatus = (day) => {
@@ -72,8 +77,8 @@ export default function RoadmapPage() {
         {/* Improved Summary Grid: Individual Opaque Cards */}
         <section className="grid grid-cols-2 lg:grid-cols-5 gap-3 md:gap-4">
           <StatItem label="Active Skill" value={roadmapJson.skillName} />
-          <StatItem label="Target Level" value={roadmapJson.level} />
-          <StatItem label="Modules" value={roadmapJson.totalModules} />
+          <StatItem label="Target Level" value={roadmapJson.targetLevel || roadmapJson.level} />
+          <StatItem label="Modules" value={roadmapJson?.totalModules || roadmapJson?.modules?.length} />
           <StatItem label="Duration" value={`${roadmapJson.estimatedWeeks} Weeks`} />
           <StatItem label="Status" value={progress ? "In Progress" : "Pending"} isAccent />
         </section>
@@ -89,7 +94,7 @@ export default function RoadmapPage() {
           </div>
           
           <div className="flex gap-4 overflow-x-auto pb-4 -mx-1 px-1 scrollbar-hide snap-x">
-            {roadmapJson.modules.map((mod, idx) => {
+            {roadmapJson?.modules?.map((mod, idx) => {
               const isActive = activeModuleIdx === idx;
               const currentM = progress?.currentModule || 1;
               const isCompleted = idx + 1 < currentM;
@@ -142,7 +147,7 @@ export default function RoadmapPage() {
           <div className="lg:col-span-4 space-y-4">
             <h2 className="text-sm font-bold uppercase tracking-[0.15em] text-gray-400 dark:text-muted">Weekly Phases</h2>
             <div className="flex lg:flex-col gap-2 overflow-x-auto lg:overflow-visible pb-2 lg:pb-0 scrollbar-hide">
-              {activeModule.weeks.map((week, idx) => {
+              {(activeModule?.weeks ?? []).map((week, idx) => {
                 const isActive = activeWeekIdx === idx;
                 return (
                   <div 
@@ -173,14 +178,14 @@ export default function RoadmapPage() {
           <div className="lg:col-span-8 space-y-4">
             <div className="flex justify-between items-center bg-white dark:bg-navy-mid p-6 md:p-8 rounded-xl border border-gray-200 dark:border-divider shadow-md gap-6">
               <div className="flex-1 min-w-0">
-                <h2 className="text-sm font-bold uppercase tracking-[0.15em] text-gray-400 dark:text-muted truncate">Week {activeWeekIdx + 1} Curriculum</h2>
+                <h2 className="text-sm font-bold uppercase tracking-[0.15em] text-gray-400 dark:text-muted truncate">Week {activeWeek?.weekNumber} Curriculum</h2>
                 <p className="text-xs text-gray-500 dark:text-muted mt-1 hidden md:block">Tactical learning objectives for this phase.</p>
               </div>
               <Button onClick={() => navigate("/learn")} size="md" className="shrink-0 shadow-sm">Get Started</Button>
             </div>
 
             <div className="bg-white dark:bg-navy-mid border border-gray-200 dark:border-divider divide-y divide-gray-100 dark:divide-divider rounded-xl overflow-hidden shadow-md">
-              {activeWeek?.days.map((day, idx) => {
+              {(activeWeek?.days ?? []).map((day, idx) => {
                 const status = getDayStatus(day);
                 return (
                   <div key={idx} className={`p-4 md:p-6 flex items-center gap-4 md:gap-6 transition-all bg-white dark:bg-navy-mid ${status === "locked" ? "opacity-50" : "hover:bg-gray-50/50 dark:hover:bg-navy-light/30"}`}>
@@ -189,7 +194,7 @@ export default function RoadmapPage() {
                         status === "current" ? "bg-accent border-accent animate-pulse shadow-[0_0_8px_rgba(56,189,248,0.5)]" : 
                         status === "passed" ? "bg-pass border-pass" : "border-divider bg-transparent"
                       }`} />
-                      <div className={`w-0.5 flex-1 bg-gray-100 dark:bg-divider ${idx === activeWeek.days.length - 1 ? "hidden" : ""}`} />
+                      <div className={`w-0.5 flex-1 bg-gray-100 dark:bg-divider ${idx === (activeWeek?.days?.length ?? 1) - 1 ? "hidden" : ""}`} />
                     </div>
                     <div className="flex-1">
                       <div className="flex items-center gap-2 mb-0.5">

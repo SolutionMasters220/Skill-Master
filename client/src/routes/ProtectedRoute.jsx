@@ -4,10 +4,14 @@ import { useApp } from "../hooks/useApp";
 import LoadingSpinner from "../components/ui/LoadingSpinner";
 
 export default function ProtectedRoute() {
-  const { user } = useAuth();
+  const { user, loading } = useAuth();
   const { isRestoring } = useApp();
 
-  if (!user) return <Navigate to="/auth" replace />;
+  if (loading) {
+    return <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-navy"><LoadingSpinner size="lg" /></div>;
+  }
+
+  if (!loading && !user) return <Navigate to="/auth" replace />;
   
   // Show spinner while restoring state from localStorage/API on reload
   if (isRestoring) {

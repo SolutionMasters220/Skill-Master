@@ -1,85 +1,109 @@
-import { useState } from "react";
-import PartCard from "./PartCard";
-import MiniExercise from "./MiniExercise";
+import { useState } from 'react';
+import MiniExercise from './MiniExercise';
+import Button from '../../../components/ui/Button';
 
 /**
- * Orchestrates the lesson parts, cards, and mini-exercises.
+ * Orchestrates lesson parts, cards, and mini-exercises.
+ * Props:
+ *   parts      - array of { partNumber, partTitle, cards: [{cardNumber, content}], miniExercise }
+ *   onComplete - called after last part's mini exercise is done
  */
-export default function LessonPhase({ lesson, onComplete }) {
-  const [currentPartIdx, setCurrentPartIdx] = useState(0);
-  const [currentCardIdx, setCurrentCardIdx] = useState(0);
-  const [showExercise, setShowExercise] = useState(false);
+export default function LessonPhase({ parts, onComplete }) {
+  const [partIndex, setPartIndex] = useState(0);    // which part (0, 1, 2)
+  const [cardIndex, setCardIndex] = useState(0);    // which card within current part
+  const [showMini, setShowMini] = useState(false);  // show mini exercise after last card
+  const [miniDone, setMiniDone] = useState(false);  // mini exercise has been answered
 
-  const activePart = lesson.parts[currentPartIdx];
-  const activeCard = activePart.cards[currentCardIdx];
-  const totalParts = lesson.parts.length;
-  
-  // Progress Calculation: weight each part and card equally
-  const progressPercent = ((currentPartIdx) / totalParts) * 100 + 
-                          ((currentCardIdx + 1) / (activePart.cards.length * totalParts)) * 100;
+  const activePart = parts[partIndex];
+  const activeCard = activePart.cards[cardIndex];
+  const isLastCard = cardIndex === activePart.cards.length - 1;
+  const isLastPart = partIndex === parts.length - 1;
+
+  // Progress calculation
+  const totalCards = parts.reduce((sum, p) => sum + p.cards.length, 0);
+  const completedCards = parts
+    .slice(0, partIndex)
+    .reduce((sum, p) => sum + p.cards.length, 0) + cardIndex;
+  const overallProgress = Math.round((completedCards / totalCards) * 100);
 
   const handleNextCard = () => {
-    window.scrollTo({ top: 0, behavior: 'smooth' });
-    setCurrentCardIdx(prev => prev + 1);
+    if (!isLastCard) {
+      setCardIndex(c => c + 1);
+    } else {
+      // Last card of this part — show mini exercise
+      setShowMini(true);
+    }
   };
 
-  const handlePrevCard = () => {
-    window.scrollTo({ top: 0, behavior: 'smooth' });
-    setCurrentCardIdx(prev => prev - 1);
+  const handleMiniComplete = () => {
+    setMiniDone(true);
+    // Parent waits for user to click Next Part / Proceed to Task
   };
-  
-  const handleExerciseComplete = () => {
-    window.scrollTo({ top: 0, behavior: 'smooth' });
-    if (currentPartIdx < totalParts - 1) {
-      setCurrentPartIdx(prev => prev + 1);
-      setCurrentCardIdx(0);
-      setShowExercise(false);
+
+  const handleAdvance = () => {
+    if (!isLastPart) {
+      setPartIndex(p => p + 1);
+      setCardIndex(0);
+      setShowMini(false);
+      setMiniDone(false);
     } else {
+      // All parts done — go to task
       onComplete();
     }
   };
 
   return (
-    <div className="animate-fade-in relative">
-      {/* Progress Section */}
+    <div className="animate-fade-in">
+      {/* Progress bar */}
       <div className="mb-8">
-        <div className="flex justify-between text-[11px] font-bold uppercase tracking-widest text-gray-400 dark:text-muted mb-2.5">
-          <span>Part {currentPartIdx + 1} of {totalParts}</span>
-          <span>{Math.round(progressPercent)}% Session Progress</span>
+        <div className="flex justify-between text-[11px] font-bold uppercase tracking-widest
+                        text-gray-400 dark:text-muted mb-2.5">
+          <span>Part {partIndex + 1} of {parts.length}</span>
+          <span>{overallProgress}% complete</span>
         </div>
         <div className="w-full h-1.5 bg-gray-200 dark:bg-divider rounded-full overflow-hidden">
-          <div 
+          <div
             className="h-full bg-accent-dk dark:bg-accent rounded-full transition-all duration-500"
-            style={{ width: `${progressPercent}%` }}
+            style={{ width: `${overallProgress}%` }}
           />
         </div>
       </div>
 
-      {/* Main Content Area */}
-      {!showExercise ? (
-        <PartCard
-          content={activeCard.content}
-          title={activePart.partTitle}
-          isFirst={currentPartIdx === 0 && currentCardIdx === 0}
-          isLast={currentCardIdx === activePart.cards.length - 1}
-          hasExercise={!!activePart.miniExercise}
-          isLastPart={currentPartIdx === totalParts - 1}
-          onNext={handleNextCard}
-          onBack={handlePrevCard}
-          onExercise={() => {
-            window.scrollTo({ top: 0, behavior: 'smooth' });
-            if (activePart.miniExercise) {
-              setShowExercise(true);
-            } else {
-              handleExerciseComplete();
-            }
-          }}
-        />
+      {!showMini ? (
+        /* Card display */
+        <div className="bg-white dark:bg-navy-mid
+                        border border-gray-200 dark:border-navy-light
+                        rounded-xl p-8 md:p-10 shadow-sm flex flex-col h-[55vh]">
+          <p className="text-[10px] font-bold uppercase tracking-[0.12em]
+                        text-accent-dk dark:text-accent mb-4 shrink-0">
+            {activePart.partTitle}
+          </p>
+          <div className="flex-1 overflow-y-auto pr-3 mb-6 custom-scrollbar">
+            <p className="text-[15px] text-justify text-gray-600 dark:text-slate leading-[1.75]">
+              {activeCard.content}
+            </p>
+          </div>
+          <div className="flex justify-between mt-auto shrink-0 pt-4 border-t border-gray-100 dark:border-divider">
+            {cardIndex > 0 && (
+              <Button variant="secondary" onClick={() => setCardIndex(c => c - 1)}>
+                ← Previous
+              </Button>
+            )}
+            <div className="ml-auto">
+              <Button variant="primary" onClick={handleNextCard}>
+                {isLastCard ? 'Continue to Exercise →' : 'Next Card →'}
+              </Button>
+            </div>
+          </div>
+        </div>
       ) : (
+        /* Mini Exercise */
         <MiniExercise
           exercise={activePart.miniExercise}
-          isLastPart={currentPartIdx === totalParts - 1}
-          onComplete={handleExerciseComplete}
+          onComplete={handleMiniComplete}
+          onAdvance={handleAdvance}
+          isLastPart={isLastPart}
+          miniDone={miniDone}
         />
       )}
     </div>

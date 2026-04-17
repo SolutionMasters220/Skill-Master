@@ -1,16 +1,27 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { useApp } from "../../context/AppContext";
+import { getStats } from "../../api/progress.api";
 import StatCard from "../../components/ui/StatCard";
 
 /**
- * Milestone 9 — Progress Page
+ * Milestone F2 — Progress Page
  * Displays the user's learning record, performance stats, and revision queue.
  */
 export default function ProgressPage() {
-  const { progress, roadmapJson } = useApp();
+  const { roadmapId, roadmapJson, progress } = useApp();
+  const [stats, setStats] = useState(null);
+
+  // Fetch stats from server on mount
+  useEffect(() => {
+    if (roadmapId) {
+      getStats(roadmapId)
+        .then(data => setStats(data))
+        .catch(err => console.error('Failed to fetch stats:', err));
+    }
+  }, [roadmapId]);
 
   // Handle case where no roadmap is active
-  if (!roadmapJson || !progress) {
+  if (!roadmapJson || !progress || !stats) {
     return (
       <div className="max-w-[900px] mx-auto px-5 py-20 text-center font-sans">
         <div className="w-16 h-16 bg-gray-100 dark:bg-navy-mid rounded-full flex items-center justify-center mx-auto mb-6">
@@ -26,82 +37,33 @@ export default function ProgressPage() {
     );
   }
 
-  // Helper to find day details by string ID (e.g. m1-w1-d1)
-  const findDay = (id) => {
-    if (!id) return null;
-    
-    // Check if ID is composite (m1-w1-d1)
-    if (typeof id === 'string' && id.includes('-')) {
-      const parts = id.split("-");
-      if (parts.length < 3) return null;
-      
-      const mNum = parseInt(parts[0].replace("m", ""));
-      const wNum = parseInt(parts[1].replace("w", ""));
-      const dNum = parseInt(parts[2].replace("d", ""));
-      
-      const mod = roadmapJson.modules.find(m => m.moduleNumber === mNum);
-      const week = mod?.weeks.find(w => w.weekNumber === wNum);
-      return week?.days.find(d => d.dayNumber === dNum);
-    }
-
-    // Fallback for legacy number IDs
-    const allDays = roadmapJson.modules.flatMap(m => m.weeks.flatMap(w => w.days));
-    return allDays.find(d => d.dayNumber === parseInt(id));
-  };
-
-  // Derived Statistics
-  const completedCount = progress.completedTasks?.length || 0;
-  const modulesCompleted = Math.max(0, progress.currentModule - 1);
-  const totalModules = roadmapJson.modules.length;
-  
-  // Latest Result Logic: Most recent performance (exam or session)
-  let latestResultText = "Passed";
-  let latestResultColor = "text-pass";
-  
-  if (progress.examScores?.length > 0) {
-    const lastExam = progress.examScores[progress.examScores.length - 1];
-    const score = typeof lastExam === 'object' ? lastExam.score : lastExam;
-    latestResultText = score >= 80 ? "Passed" : "Needs Revision";
-    latestResultColor = score >= 80 ? "text-pass" : "text-warn";
-  }
-
-  const weakTopics = progress.weakTopics || [];
-
-  // Learning Summary Calculations
-  const lessonsCompleted = progress.completedTasks?.filter(id => findDay(id)?.type === "Learning").length || 0;
-  const revisionsCompleted = progress.completedTasks?.filter(id => findDay(id)?.type === "Revision").length || 0;
-  const examsAttempted = progress.examScores?.length || 0;
-  const examsPassed = progress.examScores?.filter(s => (typeof s === 'object' ? s.score : s) >= 80).length || 0;
+  const latestResultColor = stats?.latestResult === "Passed" ? "text-pass" : stats?.latestResult === "Failed" ? "text-fail" : "text-muted";
 
   const summaryRows = [
-    { label: "Lessons Completed", value: lessonsCompleted },
-    { label: "Revision Sessions", value: revisionsCompleted },
-    { label: "Exams Attempted", value: examsAttempted },
-    { label: "Exams Passed", value: examsPassed },
+    { label: "Lessons Completed", value: stats?.lessonsCompleted ?? '—' },
+    { label: "Revision Sessions", value: stats?.revisionSessions ?? '—' },
+    { label: "Exams Attempted", value: stats?.examsAttempted ?? '—' },
+    { label: "Exams Passed", value: stats?.examsPassed ?? '—' },
   ];
-
-  // Recent Outcomes Logic
-  const lastTaskDayId = progress.completedTasks?.length > 0 ? progress.completedTasks[progress.completedTasks.length - 1] : null;
-  const lastTask = findDay(lastTaskDayId);
-  
-  const lastExamObj = progress.examScores?.length > 0 ? progress.examScores[progress.examScores.length - 1] : null;
-  const lastExamScore = typeof lastExamObj === 'object' ? lastExamObj?.score : lastExamObj;
 
   const outcomeRows = [
     { 
       label: "Last Completed", 
-      value: lastTask ? lastTask.title : "None yet" 
+      value: stats?.lastCompletedTitle ?? '—'
     },
     { 
       label: "Latest Session", 
-      value: lastTask ? "PASSED" : "N/A", 
-      statusColor: lastTask ? "text-pass" : "text-muted" 
+      value: stats?.lastSessionOutcome?.toUpperCase() ?? '—', 
+      statusColor: stats?.lastSessionOutcome === "completed" ? "text-pass" : "text-muted" 
     },
     { 
       label: "Latest Exam", 
-      value: lastExamScore ? `${lastExamScore}%` : "N/A",
-      extra: lastExamScore ? (lastExamScore >= 80 ? "PASSED" : "REVISION REQUIRED") : null,
-      statusColor: lastExamScore ? (lastExamScore >= 80 ? "text-pass" : "text-warn") : "text-muted"
+      value: stats?.latestExamScore != null
+        ? `${stats.latestExamScore}% — ${stats.latestExamPassed ? 'Passed' : 'Needs Revision'}`
+        : '—',
+      statusColor: stats?.latestExamScore != null
+        ? (stats.latestExamPassed ? "text-pass" : "text-warn")
+        : "text-muted"
     },
   ];
 
@@ -122,21 +84,21 @@ export default function ProgressPage() {
           <div className="h-[1px] flex-grow bg-gray-100 dark:bg-divider"></div>
         </div>
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-4">
-          <StatCard label="COMPLETED SESSIONS" value={completedCount} />
+          <StatCard label="COMPLETED SESSIONS" value={stats?.completedSessions ?? '—'} />
           <StatCard 
             label="MODULES COMPLETED" 
             value={
               <span className="flex items-baseline gap-1">
-                {modulesCompleted}
-                <span className="text-sm font-medium text-gray-400 dark:text-muted">/ {totalModules}</span>
+                {stats?.modulesCompleted?.split('/')?.[0] ?? '0'}
+                <span className="text-sm font-medium text-gray-400 dark:text-muted">/ {stats?.modulesCompleted?.split('/')?.[1] ?? '0'}</span>
               </span>
             } 
           />
           <StatCard 
             label="LATEST RESULT" 
-            value={<span className={latestResultColor}>{latestResultText}</span>} 
+            value={<span className={latestResultColor}>{stats?.latestResult ?? 'N/A'}</span>} 
           />
-          <StatCard label="REVISION TOPICS" value={weakTopics.length} />
+          <StatCard label="REVISION TOPICS" value={stats?.revisionTopicsCount ?? '—'} />
         </div>
       </section>
 
@@ -198,10 +160,10 @@ export default function ProgressPage() {
           <div className="h-[1px] flex-grow bg-gray-100 dark:bg-divider"></div>
         </div>
         <div className="bg-white dark:bg-navy-mid border border-gray-200 dark:border-navy-light rounded-xl overflow-hidden shadow-sm">
-          {weakTopics.length > 0 ? (
+          {stats.revisionQueue?.length > 0 ? (
             <div className="divide-y divide-gray-100 dark:divide-divider">
-              {weakTopics.map((topic, i) => (
-                <div key={topic} className="flex items-center p-5 gap-4 group hover:bg-gray-50 dark:hover:bg-navy/20 transition-colors">
+              {stats.revisionQueue.map((topic, i) => (
+                <div key={i} className="flex items-center p-5 gap-4 group hover:bg-gray-50 dark:hover:bg-navy/20 transition-colors">
                   <div className="w-1.5 h-1.5 rounded-full bg-accent-dk dark:bg-accent flex-shrink-0" />
                   <div className="flex-grow">
                     <p className="text-sm font-bold text-gray-900 dark:text-white">{topic}</p>

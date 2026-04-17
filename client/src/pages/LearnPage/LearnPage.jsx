@@ -4,14 +4,67 @@ import StatCard from "../../components/ui/StatCard";
 import Badge from "../../components/ui/Badge";
 import Button from "../../components/ui/Button";
 
+// const getCurrentSession = (roadmapJson, progress) => {
+//   if (!roadmapJson || !progress) return null;
+//   const DAY_MAP = { Monday:1, Tuesday:2, Wednesday:3, Thursday:4, Friday:5, Saturday:6, Sunday:7 };
+//   const dayNumber = DAY_MAP[progress.currentDay];
+//   const mod = roadmapJson.modules?.find(m => m.moduleNumber === progress.currentModule);
+//   const week = mod?.weeks?.find(w => w.weekNumber === progress.currentWeek);
+//   const day = week?.days?.find(d => d.dayNumber === dayNumber);
+//   if (!mod || !week || !day) return null;
+//   return {
+//     dayId: `m${progress.currentModule}-w${progress.currentWeek}-d${dayNumber}`,
+//     title: day.title,
+//     type: day.type,
+//     dayName: day.dayName,
+//     dayNumber,
+//     moduleNumber: progress.currentModule,
+//     weekNumber: progress.currentWeek,
+//     moduleTitle: mod.title,
+//     weekTitle: week.title,
+//   };
+// };
+// ==========================
+
+const getCurrentSession = (roadmapJson, progress) => {
+  if (!roadmapJson || !progress) return null;
+  const DAY_MAP = { Monday:1, Tuesday:2, Wednesday:3, Thursday:4, Friday:5, Saturday:6, Sunday:7 };
+  const dayNumber = DAY_MAP[progress.currentDay];
+  const mod = roadmapJson.modules?.find(m => m.moduleNumber === progress.currentModule);
+  if (!mod) return null;
+
+  // CRITICAL FIX: weeks may be numbered globally (3,4,5...) or locally (1,2).
+  // Try finding by weekNumber first, then fall back to array index.
+  let week = mod?.weeks?.find(w => w.weekNumber === progress.currentWeek);
+  if (!week && mod?.weeks?.length > 0) {
+    // Fallback: use 0-indexed access (currentWeek 1 = index 0)
+    week = mod.weeks[progress.currentWeek - 1];
+  }
+  if (!week) return null;
+
+  const day = week?.days?.find(d => d.dayNumber === dayNumber);
+  if (!day) return null;
+  
+  return {
+    dayId: `m${progress.currentModule}-w${progress.currentWeek}-d${dayNumber}`,
+    title: day.title,
+    type: day.type,
+    dayName: day.dayName,
+    dayNumber,
+    moduleNumber: progress.currentModule,
+    weekNumber: progress.currentWeek,
+    moduleTitle: mod.title,
+    weekTitle: week.title,
+  };
+};
+
 /**
- * Milestone 8 — Learn / Dashboard Page
+ * Milestone F2 — Learn / Dashboard Page
  * Main landing page for authenticated users. Shows stats, current session, and revision queue.
  */
 export default function LearnPage() {
   const { roadmapJson, progress, isGenerating } = useApp();
   const navigate = useNavigate();
-
   // Loading or generating state
   if (isGenerating) {
     return (
@@ -43,35 +96,41 @@ export default function LearnPage() {
     );
   }
 
-  // Find exact session details
-  const currentModule = roadmapJson.modules.find(m => m.moduleNumber === progress?.currentModule);
-  const currentWeek = currentModule?.weeks.find(w => w.weekNumber === progress?.currentWeek);
-  const session = currentWeek?.days.find(d => d.dayName === progress?.currentDay);
+  const currentSession = getCurrentSession(roadmapJson, progress);
 
-  // Fallback for safety (Exhausted roadmap or inconsistent state)
-  if (!session) {
+  // Fallback: roadmap complete or inconsistent state
+  if (!currentSession) {
+    const isRoadmapComplete = progress.currentModule > roadmapJson?.modules?.length;
     return (
       <div className="max-w-[900px] mx-auto px-5 py-20 text-center font-sans animate-fade-in">
-        <div className="w-16 h-16 bg-gray-100 dark:bg-navy-mid rounded-full flex items-center justify-center mx-auto mb-6 border border-gray-200 dark:border-divider">
-          <svg className="w-8 h-8 text-muted" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M5 13l4 4L19 7" />
+        <div className="w-16 h-16 bg-pass/10 dark:bg-pass/5 rounded-full flex items-center justify-center mx-auto mb-6 border border-pass/20">
+          <svg className="w-8 h-8 text-pass" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
           </svg>
         </div>
-        <h2 className="text-xl font-bold text-gray-900 dark:text-white mb-2">Roadmap Status</h2>
+        <h2 className="text-xl font-bold text-gray-900 dark:text-white mb-2">
+          {isRoadmapComplete ? "Roadmap Complete!" : "Module Complete"}
+        </h2>
+        {/* <p className="text-sm text-gray-500 dark:text-muted mb-8 max-w-sm mx-auto leading-relaxed">
+          {isRoadmapComplete 
+            ? `Congratulations! You have completed the entire roadmap for ${roadmapJson.skillName}.`
+            : `You've completed all scheduled sessions for Module ${progress.currentModule}. Check your progress to see what's next.`}
+        </p> */}
         <p className="text-sm text-gray-500 dark:text-muted mb-8 max-w-sm mx-auto leading-relaxed">
-          We couldn't find an active session for your current progress. This typically means you've completed your roadmap or there's a synchronization error.
+          {isRoadmapComplete 
+            ? `Congratulations! You have completed the entire roadmap for ${roadmapJson.skillName}.`
+            : `You've completed all scheduled sessions for Module ${progress.currentModule - 1}. 
+              Module ${progress.currentModule} is now unlocked. Start your next session below.`}
         </p>
         <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
-          <Button variant="primary" onClick={() => navigate("/progress")}>Check Progress Records</Button>
-          <Button variant="secondary" onClick={() => navigate("/roadmap")}>View Full Roadmap</Button>
+          <Button variant="primary" onClick={() => navigate("/progress")}>View Progress Stats</Button>
+          <Button variant="secondary" onClick={() => navigate("/roadmap")}>Review Roadmap</Button>
         </div>
       </div>
     );
   }
 
-  // dayId for session routing (e.g., m1-w1-d1)
-  const dayId = `m${progress.currentModule}-w${progress.currentWeek}-d${session.dayNumber}`; 
-  const weakTopics = progress.weakTopics || [];
+  const weakTopics = progress.allWeakTopics || [];
 
   return (
     <div className="max-w-[900px] mx-auto px-5 py-8 font-sans">
@@ -89,7 +148,7 @@ export default function LearnPage() {
         <StatCard label="CURRENT MODULE" value={`Module ${progress.currentModule}`} />
         <StatCard label="CURRENT WEEK"   value={`Week ${progress.currentWeek}`} />
         <StatCard label="CURRENT DAY"    value={progress.currentDay} />
-        <StatCard label="REVISION QUEUE" value={`${weakTopics.length} Topics`} />
+        <StatCard label="REVISION QUEUE" value={`${progress.allWeakTopics?.length ?? 0} Topics`} />
       </div>
 
       {/* Prominent Session Card (Responsive logic: flex-col on mobile, flex-row on desktop) */}
@@ -102,25 +161,25 @@ export default function LearnPage() {
           {/* LEFT — Session Details */}
           <div className="flex-1">
             <div className="flex flex-wrap gap-2 mb-3.5">
-              <Badge variant={session.type.toLowerCase()}>{session.type}</Badge>
-              <Badge variant="locked">Day {session.dayNumber}</Badge>
+              <Badge variant={currentSession.type.toLowerCase()}>{currentSession.type}</Badge>
+              <Badge variant="locked">Day {currentSession.dayNumber}</Badge>
               <Badge variant="current">Ready to Continue</Badge>
             </div>
 
             <h2 className="text-xl md:text-xl font-semibold text-gray-900 dark:text-white mb-2 leading-tight">
-              {session.title}
+              {currentSession.title}
             </h2>
 
             <p className="text-sm text-gray-400 dark:text-muted mb-3 font-medium">
-              Day {session.dayNumber} — {session.dayName} · Module {progress.currentModule} · Week {progress.currentWeek}
+              Day {currentSession.dayNumber} — {currentSession.dayName} · Module {currentSession.moduleNumber} · Week {currentSession.weekNumber}
             </p>
 
             <p className="text-sm text-gray-600 dark:text-slate mb-6 max-w-[95%] leading-relaxed">
-              Continue with today's {session.type.toLowerCase()} session. 
+              Continue with today's {currentSession.type.toLowerCase()} session. 
               Complete the lesson and tasks to advance your skills.
             </p>
 
-            <Button variant="primary" fullWidth={false} onClick={() => navigate(`/session/${dayId}`)}>
+            <Button variant="primary" fullWidth={false} onClick={() => navigate(`/session/${currentSession.dayId}`)}>
               Continue Session
             </Button>
           </div>
@@ -151,7 +210,7 @@ export default function LearnPage() {
             <div className="px-5 py-6 flex items-center justify-center text-center">
               <div>
                 <p className="text-sm font-medium text-gray-400 dark:text-muted">
-                  Your revision queue is clean
+                  No revision topics yet
                 </p>
                 <p className="text-[11px] text-gray-300 dark:text-navy-light mt-0.5">
                   Complex topics will appear here for review

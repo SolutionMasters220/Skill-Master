@@ -1,7 +1,7 @@
 import LoadingSpinner from "./LoadingSpinner";
 
 const variants = {
-  primary:   "bg-accent text-navy hover:bg-accent-dk font-semibold",
+  primary:   "bg-accent-dk dark:bg-accent text-white dark:text-navy hover:bg-sky-600 dark:hover:bg-accent-dk font-semibold",
   secondary: "bg-transparent border border-divider text-muted hover:text-slate",
   ghost:     "bg-transparent border border-divider text-muted",
   danger:    "bg-fail text-white hover:opacity-90 font-semibold",
