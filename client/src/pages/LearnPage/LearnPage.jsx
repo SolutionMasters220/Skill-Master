@@ -202,10 +202,10 @@ export default function LearnPage() {
           {weakTopics.length === 0 ? (
             <div className="px-5 py-6 flex items-center justify-center text-center">
               <div>
-                <p className="text-sm font-medium text-gray-400 dark:text-muted">
+                <p className="text-sm font-medium text-gray-500 dark:text-slate">
                   No revision topics yet
                 </p>
-                <p className="text-[11px] text-gray-300 dark:text-navy-light mt-0.5">
+                <p className="text-[11px] text-gray-400 dark:text-muted mt-0.5">
                   Complex topics will appear here for review
                 </p>
               </div>
