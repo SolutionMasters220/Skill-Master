@@ -98,17 +98,17 @@ export default function LessonPhase({ parts, onComplete }) {
               <ReactMarkdown>{activeCard.content}</ReactMarkdown>
             </div>
           </div>
-          <div className="flex justify-between mt-auto shrink-0 pt-4 border-t border-gray-100 dark:border-divider">
-            {cardIndex > 0 && (
+          <div className="flex items-center justify-between gap-3 mt-auto shrink-0 pt-4 border-t border-gray-100 dark:border-divider">
+            {cardIndex > 0 ? (
               <Button variant="secondary" onClick={() => setCardIndex(c => c - 1)}>
-                ← Previous
+                Previous
               </Button>
+            ) : (
+              <span />
             )}
-            <div className="ml-auto">
-              <Button variant="primary" onClick={handleNextCard}>
-                {isLastCard ? 'Continue to Exercise →' : 'Next Card →'}
-              </Button>
-            </div>
+            <Button variant="primary" onClick={handleNextCard}>
+              {isLastCard ? 'Continue to Exercise' : 'Next Card'}
+            </Button>
           </div>
         </div>
       ) : (
