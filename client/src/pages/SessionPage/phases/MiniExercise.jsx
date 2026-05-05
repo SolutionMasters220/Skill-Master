@@ -26,7 +26,7 @@ export default function MiniExercise({ exercise, onComplete, onAdvance, isLastPa
   return (
     <div className="bg-white dark:bg-navy-mid
                     border border-gray-200 dark:border-navy-light
-                    rounded-xl p-8 shadow-sm animate-fade-in">
+                    rounded-xl px-4 py-6 sm:p-8 shadow-sm animate-fade-in">
       <div className="flex items-center gap-2 mb-6">
         <div className="w-2 h-2 rounded-full bg-accent-dk dark:bg-accent" />
         <p className="text-xs font-bold uppercase tracking-[0.1em]
@@ -52,8 +52,9 @@ export default function MiniExercise({ exercise, onComplete, onAdvance, isLastPa
             type="button"
             onClick={() => !answered && setSelected(i)}
             disabled={answered}
-            className={`flex items-center gap-4 h-14 px-5 rounded-[10px]
+            className={`flex items-start gap-4 min-h-14 py-3 px-5 rounded-[10px]
                         border-[1.5px] text-sm font-medium text-left transition-all
+                        w-full break-words whitespace-normal
               ${answered && i === exercise.correctIndex
                 ? 'bg-pass/10 border-pass text-pass'
                 : answered && i === selected && i !== exercise.correctIndex
@@ -63,7 +64,7 @@ export default function MiniExercise({ exercise, onComplete, onAdvance, isLastPa
                 : 'bg-white dark:bg-navy border-gray-200 dark:border-divider text-gray-700 dark:text-slate'
               }`}
           >
-            <div className={`w-5 h-5 rounded-full border-[1.5px] flex-shrink-0
+            <div className={`w-5 h-5 mt-0.5 rounded-full border-[1.5px] flex-shrink-0
                              flex items-center justify-center
               ${selected === i
                 ? 'border-accent-dk dark:border-accent'
@@ -73,9 +74,11 @@ export default function MiniExercise({ exercise, onComplete, onAdvance, isLastPa
                 <div className="w-2.5 h-2.5 rounded-full bg-accent-dk dark:bg-accent" />
               )}
             </div>
-            <ReactMarkdown components={{ p: ({ children }) => <span>{children}</span> }}>
-              {opt}
-            </ReactMarkdown>
+            <span className="min-w-0 break-words">
+              <ReactMarkdown components={{ p: ({ children }) => <span>{children}</span> }}>
+                {opt}
+              </ReactMarkdown>
+            </span>
           </button>
         ))}
       </div>
