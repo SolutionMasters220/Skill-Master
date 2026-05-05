@@ -1,15 +1,72 @@
-// ==============================================================================
-// SKILL MASTER — GEMINI SERVICE v2
-// Refactored for quality-first content generation.
-//
-// KEY CHANGES FROM v1:
-// 1. Two-call architecture for lessons only (think → structure). Everything else stays single-call.
-// 2. Schema relaxed — controls shape, not creativity.
-// 3. Prompts force cognition before generation ("Before you write, identify...")
-// 4. Engineer voice enforced — banned textbook phrases.
-// 5. Self-critique pass on lesson content before returning.
-// 6. Flash for roadmap/MCQ/feedback. Pro for lesson thinking call only.
-// ==============================================================================
+/**
+ * @fileoverview Gemini AI Integration Service for SkillMaster Content Generation
+ *
+ * This module provides the AI backbone for dynamic learning content generation, powering:
+ * - **Roadmap generation**: 7-day/week curriculum structure with daily topics and exam questions
+ * - **Lesson content**: Multi-part educational material with cards, examples, and embedded exercises
+ * - **Feedback delivery**: Personalized assessment feedback on learner submissions (MCQ and open-ended)
+ *
+ * ## Architecture: Two-Call Pipeline for Lessons
+ *
+ * **Lesson Generation (Two Calls)**:
+ * Call 1 uses the Gemini 2.5 Pro model to engage in extended thinking — the AI reason through
+ * pedagogical strategy, learner mistakes, real-world connections, and examples *before* generating
+ * content. This call produces rich, free-form lesson text without JSON constraints.
+ * Call 2 uses Gemini 2.5 Flash to parse and structure that thinking into the strict JSON schema.
+ * Why two calls? Pro's extended thinking dramatically improves content quality (better examples,
+ * fewer hallucinations, stronger pedagogy), but Pro is slower and more expensive. Flash is fast
+ * and cheap for structural tasks. Splitting reasoning from formatting optimizes both quality
+ * and cost — we pay for deep thinking only on lessons, not on roadmaps.
+ *
+ * **Roadmap, Feedback, MCQ (Single Call)**:
+ * Roadmap, feedback, and all non-lesson calls use Gemini 2.5 Flash in a single pass. These
+ * domains don't require extended reasoning — they're structured/evaluative tasks where speed
+ * and cost matter more than deep cognition.
+ *
+ * ## Public Exports
+ * - `generateRoadmapSkeleton(data)` — Creates curriculum structure (modules, weeks, days, exams)
+ * - `generateLessonContent(data)` — Creates lesson material (learning or revision)
+ * - `generateFeedback(data)` — Evaluates and provides feedback on task submissions
+ *
+ * ## Internal Helpers (Not Exported)
+ * - `callModel(config)` — Unified API call wrapper with schema binding and retry logic
+ * - `generateLessonTwoPass(thinkingPrompt, formatterPrompt)` — Orchestrates Pro→Flash pipeline
+ * - `parseJSON(text)` — Safely parses JSON responses, throws JSON_PARSE_FAILURE on error
+ * - `validateLessonStructure(parsed)` — Validates semantic structure (non-empty parts/cards, >50 chars)
+ * - `cleanPartTitle(title)` — Detects hallucination patterns (word repetition) and sanitizes
+ * - `wait(ms)` — Async sleep utility for retry backoff
+ *
+ * ## Rate Limiting & Retry Behavior
+ *
+ * The `callModel()` function implements exponential backoff for transient failures:
+ * - **429 (Rate Limited)**: Wait and retry
+ * - **500 (Server Error)**: Wait and retry
+ * - **Backoff Schedule**: 5s (attempt 1) → 15s (attempt 2) → 30s (attempt 3)
+ * - **Max Attempts**: 3 total
+ * - **Non-Retryable Failures**: JSON parsing errors (JSON_PARSE_FAILURE) throw immediately
+ *
+ * Example: If a lesson call hits a 500 on attempt 1, it waits 5s and retries.
+ * If attempt 2 also fails, it waits 15s and tries once more. If attempt 3 fails, it throws.
+ *
+ * ## Validation Chain
+ *
+ * Lesson responses flow through a strict validation pipeline to prevent hallucinated or
+ * malformed content from reaching learners:
+ *
+ * 1. **parseJSON()** — Parses the JSON string. Throws JSON_PARSE_FAILURE if invalid JSON.
+ * 2. **validateLessonStructure()** — Checks semantic structure: parts array is non-empty,
+ *    each part has cards array (non-empty), each card has content >50 characters.
+ *    Throws JSON_PARSE_FAILURE if any check fails (triggers retry).
+ * 3. **cleanPartTitle()** — Detects word repetition hallucinations (word appears 3+ times in
+ *    80-char sample → replace with fallback). Strips trailing JSON artifacts (`, ", whitespace).
+ *
+ * This chain is called after every lesson generation. Invalid structures trigger a full retry
+ * of the AI call, not a silent fix. The controller layer (session.controller.js) has an
+ * additional guardSessionContent() validation pass before persisting to the database.
+ *
+ * @version 2.0
+ * @author SkillMaster Engineering
+ */
 
 import { GoogleGenAI, Type } from '@google/genai';
 import dotenv from 'dotenv';
@@ -323,8 +380,61 @@ const generateLessonTwoPass = async (thinkingPrompt, formatterPrompt) => {
 // ==============================================================================
 
 /**
- * Generates the roadmap skeleton — module/week/day structure with exam questions.
- * Single Flash call. This doesn't need creative depth, just good curriculum design.
+ * Generates a complete learning roadmap (curriculum skeleton).
+ *
+ * Creates a structured 7-day/week learning plan with modules, weeks, and daily topics.
+ * Each week includes 5 learning days (Mon–Fri), 1 revision day (Sat), and 1 exam day (Sun).
+ * Exam days include exactly 5 multiple-choice questions tied to week topics.
+ *
+ * This is a single-call operation using Gemini 2.5 Flash. Roadmap generation is purely
+ * curriculum-design work (no creative writing needed), so Flash's speed and cost efficiency
+ * are prioritized over Pro's extended thinking.
+ *
+ * @param {Object} data - Learner profile and skill input
+ * @param {string} data.skillInput - The skill to learn (e.g., "React", "Machine Learning", "Copywriting")
+ * @param {string} data.motivation - Learner's stated goal or use case
+ * @param {string} data.currentLevel - Learner's experience level ("Beginner", "Intermediate", "Advanced")
+ * @param {string} data.role - Learner's professional role or context
+ * @param {string} data.learningStyle - Preferred learning modality ("Practice", "Examples", "Theory")
+ * @param {string} data.goalClarity - How well-defined the goal is ("Clear", "Moderate", "Vague")
+ * @param {string} data.dailyTime - Daily time commitment (e.g., "1 hour", "3 hours")
+ *
+ * @returns {Promise<Object>} Roadmap object matching ROADMAP_SCHEMA
+ * @returns {string} returnValue.skillName - Canonical skill name
+ * @returns {string} returnValue.targetLevel - Target proficiency level
+ * @returns {number} returnValue.totalModules - Total modules in roadmap
+ * @returns {number} returnValue.estimatedWeeks - Total weeks (sum of all module weeks)
+ * @returns {Array<Object>} returnValue.modules - Array of module objects
+ * @returns {number} returnValue.modules[].moduleNumber - Module sequence number
+ * @returns {string} returnValue.modules[].title - Module title
+ * @returns {Array<Object>} returnValue.modules[].weeks - Array of 7-day weeks
+ * @returns {number} returnValue.modules[].weeks[].weekNumber - Week sequence number
+ * @returns {string} returnValue.modules[].weeks[].title - Week theme/title
+ * @returns {Array<Object>} returnValue.modules[].weeks[].days - 7 day objects (Mon–Sun)
+ * @returns {number} returnValue.modules[].weeks[].days[].dayNumber - Day 1–7
+ * @returns {string} returnValue.modules[].weeks[].days[].dayName - "Monday", "Saturday", etc.
+ * @returns {string} returnValue.modules[].weeks[].days[].type - "learning", "revision", or "exam"
+ * @returns {string} returnValue.modules[].weeks[].days[].title - Outcome-focused title (e.g., "Building Reusable Components with Props")
+ * @returns {Array<string>} returnValue.modules[].weeks[].days[].topicsList - 2–4 specific topics for learning days; empty for revision/exam
+ * @returns {Array<Object>} returnValue.modules[].weeks[].days[].examQuestions - 5 MCQ objects for exam days only
+ * @returns {string} returnValue.modules[].weeks[].days[].examQuestions[].question - Question text
+ * @returns {Array<string>} returnValue.modules[].weeks[].days[].examQuestions[].options - 4 answer options
+ * @returns {number} returnValue.modules[].weeks[].days[].examQuestions[].correctIndex - Index of correct option (0–3)
+ * @returns {string} returnValue.modules[].weeks[].days[].examQuestions[].topicTag - Matching topic from week topics for traceability
+ *
+ * @throws {Error} Throws error if API call fails after 3 retries or if JSON is invalid
+ *
+ * @example
+ * const roadmap = await generateRoadmapSkeleton({
+ *   skillInput: "Advanced React Patterns",
+ *   motivation: "Build scalable web apps at a startup",
+ *   currentLevel: "Intermediate",
+ *   role: "Frontend Engineer",
+ *   learningStyle: "Practice",
+ *   goalClarity: "Clear",
+ *   dailyTime: "2 hours"
+ * });
+ * // Returns: { skillName: "Advanced React Patterns", modules: [...], totalModules: 6, ... }
  */
 export const generateRoadmapSkeleton = (data) => {
   const prompt = `Generate a learning roadmap for this learner:
@@ -356,8 +466,95 @@ CURRICULUM RULES:
 };
 
 /**
- * Generates lesson content for a learning day.
- * TWO-CALL pipeline: Pro thinks → Flash structures.
+ * Generates lesson content for a learning day or a revision session.
+ *
+ * This is the only function that uses the two-call pipeline: Pro model thinks deeply about
+ * pedagogy, examples, and learner misconceptions; Flash model formats the result into strict JSON.
+ *
+ * ## Learning Path (isRevision === false, isExamRetry === false)
+ * Generates a full 3-part lesson for a new topic, with context from the learner's goal,
+ * learning style, and current level. Each part has 2–4 cards plus a mini-exercise.
+ * At the end: either 10–15 MCQ questions (conceptual topics) or one open-ended text task
+ * (practical/hands-on topics).
+ *
+ * ## Revision Path (isRevision === true OR isExamRetry === true)
+ * Generates a focused revision session with 1 part, 3 cards, and 1 mini-exercise.
+ * No task. Used when a learner revisits weak topics before re-taking an exam.
+ * Content is re-explained from a different angle with new examples.
+ *
+ * ## Model Usage
+ * Call 1: Gemini 2.5 Pro with extended thinking (reasoning about content before generation)
+ * Call 2: Gemini 2.5 Flash (strict JSON formatting)
+ *
+ * @param {Object} data - Lesson context and learner profile
+ *
+ * @param {boolean} [data.isRevision=false] - If true, generate 1-part revision content
+ * @param {boolean} [data.isExamRetry=false] - If true, generate revision after failed exam
+ * @param {string} data.skillName - Skill being learned
+ * @param {string} data.currentLevel - Learner level ("Beginner", "Intermediate", "Advanced")
+ * @param {string} data.motivation - Learner's goal (referenced in content)
+ * @param {string} data.learningStyle - Preferred mode ("Practice", "Examples", "Theory")
+ *
+ * **Learning Path Only**:
+ * @param {number} data.moduleNumber - Module number (1, 2, 3, ...)
+ * @param {string} data.moduleTitle - Module title
+ * @param {number} data.weekNumber - Week number within module
+ * @param {string} data.weekTitle - Week theme
+ * @param {number} data.dayNumber - Day in week (1–5 for learning, 6 for revision, 7 for exam)
+ * @param {string} data.dayName - Day name ("Monday", "Tuesday", etc.)
+ * @param {Array<string>} data.topicsList - 2–4 topics to cover today
+ *
+ * **Revision Path Only**:
+ * @param {string} [data.weakTopicsStr] - Comma-separated weak topics to revisit
+ * @param {string} [data.allWeekTopics] - Fallback: all topics from the week if no weak topics provided
+ *
+ * @returns {Promise<Object>} Lesson object matching LESSON_SCHEMA
+ * @returns {Array<Object>} returnValue.parts - Array of lesson parts (1 for revision, 3 for learning)
+ * @returns {number} returnValue.parts[].partNumber - Part sequence (1, 2, 3, ...)
+ * @returns {string} returnValue.parts[].partTitle - 5–8 word outcome-focused title
+ * @returns {Array<Object>} returnValue.parts[].cards - Array of content cards (2–4 per part)
+ * @returns {number} returnValue.parts[].cards[].cardNumber - Card sequence number
+ * @returns {string} returnValue.parts[].cards[].content - Rich markdown-formatted content (120–200 words, concrete examples, common mistakes addressed)
+ * @returns {Object} returnValue.parts[].miniExercise - Single-question quiz per part
+ * @returns {string} returnValue.parts[].miniExercise.question - Question text
+ * @returns {Array<string>} returnValue.parts[].miniExercise.options - 4 answer options
+ * @returns {number} returnValue.parts[].miniExercise.correctIndex - Index of correct option (0–3)
+ * @returns {string} returnValue.parts[].miniExercise.explanation - Why this is correct and others are wrong
+ * @returns {Object|null} returnValue.task - Task at end of lesson (null for revision)
+ * @returns {string} returnValue.task.type - "mcq" or "text"
+ * @returns {string} returnValue.task.description - Task prompt/instructions
+ * @returns {Array<Object>} returnValue.task.questions - MCQ questions (if type === "mcq") or open-ended task (if type === "text")
+ * @returns {string} returnValue.task.questions[].question - Question text
+ * @returns {Array<string>} returnValue.task.questions[].options - 4 options (MCQ only)
+ * @returns {number} returnValue.task.questions[].correctIndex - Correct option index (MCQ only)
+ * @returns {string} returnValue.task.questions[].topicTag - Related topic for traceability
+ *
+ * @throws {Error} Throws error if API calls fail after retries or if structure validation fails
+ *
+ * @example
+ * // Learning path
+ * const lesson = await generateLessonContent({
+ *   skillName: "React",
+ *   currentLevel: "Beginner",
+ *   motivation: "Build interactive web apps",
+ *   learningStyle: "Practice",
+ *   moduleNumber: 1,
+ *   moduleTitle: "React Fundamentals",
+ *   weekNumber: 1,
+ *   weekTitle: "Components and JSX",
+ *   dayNumber: 1,
+ *   dayName: "Monday",
+ *   topicsList: ["Writing your first component", "Understanding JSX syntax"]
+ * });
+ *
+ * @example
+ * // Revision path
+ * const revision = await generateLessonContent({
+ *   skillName: "React",
+ *   currentLevel: "Beginner",
+ *   isRevision: true,
+ *   weakTopicsStr: "JSX syntax, component props"
+ * });
  */
 export const generateLessonContent = async (data) => {
 
@@ -429,8 +626,113 @@ Preserve all content and examples. Do not simplify anything.`;
 };
 
 /**
- * Generates AI feedback on task submission.
- * Single Flash call — feedback doesn't need deep creativity.
+ * Generates AI-powered feedback on a learner's task submission.
+ *
+ * Evaluates both MCQ task submissions and open-ended text task submissions, providing
+ * personalized, actionable feedback. The function routes to different evaluation logic based
+ * on task type but always returns structured feedback with specific strengths, weaknesses,
+ * next steps, and curated resources.
+ *
+ * This is a single-call operation using Gemini 2.5 Flash. The evaluation is straightforward
+ * (diagnose right/wrong answers, provide feedback) and doesn't require extended reasoning.
+ *
+ * ## MCQ Path (isMcq === true)
+ * Analyzes multiple-choice quiz performance. The feedback examines incorrect answers,
+ * diagnoses conceptual confusion (not surface-level mistakes), and maps failures back to
+ * the specific topics being tested. Resources are tied to weak topics.
+ *
+ * Feedback structure:
+ * 1. What was understood (specific correct answers and concepts demonstrated)
+ * 2. What broke down (diagnosis of the conceptual gap behind wrong answers)
+ * 3. One concrete next step (study action, re-read, practice example, etc.)
+ * Then: OUTCOME: positive | needs_improvement
+ * Then: RESOURCES: 1–2 official documentation links with brief descriptions
+ *
+ * ## Text Task Path (isMcq === false)
+ * Analyzes open-ended task submissions (code reviews, explanations, engineering decisions).
+ * Feedback examines completeness, correctness, depth, and engineering quality.
+ *
+ * Feedback structure (same as MCQ):
+ * 1. What was demonstrated correctly
+ * 2. What's missing or wrong (specific, actionable)
+ * 3. One concrete next step
+ * Then: OUTCOME: positive | needs_improvement
+ * Then: RESOURCES: 1–2 official documentation links
+ *
+ * ## Resource Guidelines
+ * Resources are always official documentation only: MDN, React docs, Node.js docs, MongoDB,
+ * Python docs, etc. Never YouTube, Medium, blogs, or broken links. If a resource doesn't
+ * apply, the response includes: "RESOURCES: (no additional resources needed for this topic)"
+ *
+ * @param {Object} data - Task submission and evaluation context
+ * @param {boolean} data.isMcq - If true, evaluate MCQ performance; otherwise text task
+ * @param {string} data.description - Task title or description
+ * @param {Array<string>} data.topicsList - Topics being tested/assessed
+ * @param {string} [data.outcome="needs_improvement"] - Expected outcome ("positive" or "needs_improvement")
+ *
+ * **MCQ Path Only**:
+ * @param {Array<Object>} data.report - Array of question results
+ * @param {string} data.report[].questionText - The question asked
+ * @param {Array<string>} data.report[].options - 4 answer options
+ * @param {number} data.report[].selectedIndex - Index of learner's choice (0–3)
+ * @param {number} data.report[].correctIndex - Index of correct answer (0–3)
+ * @param {boolean} data.report[].isCorrect - Whether learner got it right
+ * @param {string} [data.report[].topicTag] - Topic this question tests (for resource matching)
+ * @param {number} [data.score] - Percentage score (calculated from report if not provided)
+ * @param {number} [data.correctCount] - Number of correct answers (calculated if not provided)
+ * @param {number} [data.totalQuestions] - Total questions (length of report if not provided)
+ *
+ * **Text Task Path Only**:
+ * @param {string} data.userAnswer - Learner's submitted answer/response
+ *
+ * @returns {Promise<string>} Plain-text feedback response
+ * Format:
+ * ```
+ * [Paragraph 1: What was understood]
+ *
+ * [Paragraph 2: What needs improvement]
+ *
+ * [Paragraph 3: Specific next step]
+ *
+ * OUTCOME: positive | needs_improvement
+ *
+ * RESOURCES:
+ * - [Resource Title](https://...) — description
+ * - [Resource Title](https://...) — description
+ * OR
+ * RESOURCES: (no additional resources needed for this topic)
+ * ```
+ *
+ * @throws {Error} Throws error if API call fails after retries
+ *
+ * @example
+ * // MCQ feedback
+ * const feedback = await generateFeedback({
+ *   isMcq: true,
+ *   description: "Week 1 Quiz: Components and JSX",
+ *   topicsList: ["JSX syntax", "Component lifecycle"],
+ *   report: [
+ *     {
+ *       questionText: "What does JSX compile to?",
+ *       options: ["HTML", "JavaScript function calls", "CSS", "JSON"],
+ *       selectedIndex: 0,
+ *       correctIndex: 1,
+ *       isCorrect: false,
+ *       topicTag: "JSX syntax"
+ *     },
+ *     // ... more questions
+ *   ],
+ *   score: 60
+ * });
+ *
+ * @example
+ * // Text task feedback
+ * const feedback = await generateFeedback({
+ *   isMcq: false,
+ *   description: "Design a React component for a form",
+ *   topicsList: ["Component composition", "State management"],
+ *   userAnswer: "function MyForm() { const [name, setName] = useState(''); ... }"
+ * });
  */
 export const generateFeedback = (data) => {
   let prompt;
@@ -490,7 +792,9 @@ Use ONLY official documentation URLs: MDN, React docs, Node.js docs, MongoDB doc
   });
 };
 // ***
-// *** GEMINI SERVICE
+// END OF GEMINI SERVICE
+// ***
+// GEMINI SERVICE
 // // ==============================================================================
 // // HARDENED GEMINI SERVICE — IMPLEMENTING SDK BEST PRACTICES
 // // ==============================================================================

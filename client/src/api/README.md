@@ -28,7 +28,7 @@ Service layer providing abstraction over HTTP communication with the backend, ha
 | **auth.api.js** | Service | Handles signup, login, and current user info retrieval |
 | **progress.api.js** | Service | Handles progress advancement and stats retrieval |
 | **roadmap.api.js** | Service | Handles roadmap generation and active roadmap fetching |
-| **session.api.js** | Service | Handles session fetching, task submission, and exam submission |
+| **session.api.js** | Service | Handles session fetching, task submission, exam submission, and feedback retrieval |
 
 ## How It Works
 
@@ -175,7 +175,10 @@ SESSION FETCH FLOW:
     → axiosInstance.get(`/session/${dayId}`, { params: { roadmapId } })
     → Backend generates or fetches session for day
     ↓
-  Output: { session: { _id, dayId, type, content, status, ... } }
+  Output: { session: { _id, dayId, type, content, status, userId, roadmapId, generatedAt } }
+    where content structure depends on type:
+      - Learning/Revision: { parts: [...], task: {...} }
+      - Exam: { examQuestions: [...] }
     Component renders LessonPhase/MiniExercise/TaskPhase based on type
 
 TASK SUBMISSION FLOW:
@@ -263,6 +266,8 @@ STATS FETCH FLOW:
 11. **Not handling network errors** - If backend is down, error.response is undefined. Check error.code for network errors: `if (error.code === 'ERR_NETWORK') { ... }`
 
 12. **Assuming response shape matches backend** - Backend contract can change; frontend will break. Always document expected response shape in JSDoc comments.
+
+13. **Calling advanceProgress after exam pass AND expecting auto-advance** - The backend no longer auto-advances progress on exam pass. The frontend is responsible for calling POST /progress/advance after a passed exam. If you call it twice or forget to call it after exam pass, completedDays will have duplicate protection but currentDay will double-advance or not advance at all. Always explicitly call advanceProgress after handleExamPass() completes.
 
 ## Extension Points
 

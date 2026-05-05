@@ -1,5 +1,93 @@
 # Skill Master
 
+Learn smarter with personalized learning paths powered by AI.
+
+## Live Demo
+[https://skill-master-xi.vercel.app/](https://skill-master-xi.vercel.app/)
+
+## Tech Stack
+![React 18](https://img.shields.io/badge/React-18-61DAFB?style=flat-square&logo=react&logoColor=white)
+![Node.js](https://img.shields.io/badge/Node.js-339933?style=flat-square&logo=node.js&logoColor=white)
+![Express](https://img.shields.io/badge/Express-000000?style=flat-square&logo=express&logoColor=white)
+![MongoDB](https://img.shields.io/badge/MongoDB-47A248?style=flat-square&logo=mongodb&logoColor=white)
+![Tailwind CSS](https://img.shields.io/badge/Tailwind%20CSS-06B6D4?style=flat-square&logo=tailwindcss&logoColor=white)
+![Google Gemini](https://img.shields.io/badge/Google%20Gemini-8E75B6?style=flat-square)
+![Vercel](https://img.shields.io/badge/Vercel-000000?style=flat-square&logo=vercel&logoColor=white)
+![Railway](https://img.shields.io/badge/Railway-0B0D0E?style=flat-square&logo=railway&logoColor=white)
+
+## What It Does
+- **Get a personalized learning path** — AI creates a custom roadmap just for your goals and pace.
+- **Learn through interactive lessons** — Read content, complete exercises, and get instant AI feedback.
+- **Track your progress** — See your learning streaks, completed lessons, and exam scores at a glance.
+- **Test your knowledge** — Take full exams, get detailed results, and identify areas to improve.
+
+> 📸 **Screenshot** — [Replace this line with a screenshot of the dashboard after running the app]
+
+## Getting Started
+
+### Prerequisites
+- Node.js >= 20
+- MongoDB Atlas account (free M0 tier)
+- Google AI Studio API key (free tier or pay-as-you-go)
+
+### Installation
+Clone the repository and install dependencies:
+
+```bash
+git clone https://github.com/yourusername/skill-master.git
+cd skill-master
+```
+
+```bash
+cd server && npm install
+```
+
+```bash
+cd ../client && npm install
+```
+
+### Environment Setup
+
+Create a `.env` file in the `server/` directory with the following keys:
+
+```
+MONGO_URI=mongodb+srv://your-user:your-pass@cluster.mongodb.net/skillmaster
+JWT_SECRET=your-32-char-random-secret
+GEMINI_API_KEY=your-api-key-from-aistudio.google.com
+PORT=5000
+```
+
+Create a `.env` file in the `client/` directory:
+
+```
+VITE_API_URL=http://localhost:5000/api
+```
+
+### Running Locally
+
+Open two terminal windows and run:
+
+**Terminal 1** (Backend):
+```bash
+cd server && npm run dev
+```
+
+**Terminal 2** (Frontend):
+```bash
+cd client && npm run dev
+```
+
+### Health Check
+The backend is ready when this endpoint returns a running status:
+```
+GET http://localhost:5000/api/health
+```
+
+Expected response:
+```json
+{"status":"running"}
+```
+
 ## Purpose
 Skill Master is an AI-powered adaptive learning platform that generates personalized learning roadmaps using Google Gemini, guiding users through structured lessons, interactive tasks, feedback loops, and assessments—all coordinated between a React frontend and Express.js backend.
 
@@ -248,3 +336,14 @@ RESULT
 - Error handling: All routes have try/catch → return meaningful error messages
 - Add logging: Wrap Gemini calls with `console.log(timestamp, modelName, tokensUsed)` for cost tracking
 - Add metrics: Track completion rates, average feedback generation time, API error rates
+
+## Team
+
+| Name | Role | Primary Contribution |
+|------|------|----------------------|
+| Sharjeel Arshad | Lead Backend & AI Engineer | System architecture, Gemini integration, session engine, backend hardening, deployment |
+| Nida Javaid | Frontend & Design | Figma designs, UI/UX implementation, component development |
+| Laraib Imran | Project Manager | Team management, financials, project coordination |
+| Noor Anwar | Technical Documentation | Documentation, technical writing |
+
+> Supervised by Prof. Hafiz Muhammad Mudassir, Superior University, Lahore.
