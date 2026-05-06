@@ -229,7 +229,7 @@ REQUIRED JSON STRUCTURE:
     systemPrompt,
     userPrompt,
     isJson: true,
-    maxTokens: 8192,
+    maxTokens: 6000, // large roadmap JSON output
   });
 };
 
